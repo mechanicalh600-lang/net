@@ -12,6 +12,7 @@ import { Meetings } from './pages/Meetings';
 import { Suggestions } from './pages/Suggestions';
 import { PurchaseRequests } from './pages/PurchaseRequests';
 import { Settings } from './pages/Settings';
+import { SnowEffect } from './components/SnowEffect';
 import { User, UserRole } from './types';
 import { mockIp, getShamsiDate, getTime } from './utils';
 
@@ -26,6 +27,10 @@ const App: React.FC = () => {
     return localStorage.getItem('theme') === 'dark';
   });
 
+  const [snowMode, setSnowMode] = useState<boolean>(() => {
+    return localStorage.getItem('snowMode') === 'true';
+  });
+
   // Effects
   useEffect(() => {
     if (darkMode) {
@@ -36,6 +41,10 @@ const App: React.FC = () => {
       localStorage.setItem('theme', 'light');
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    localStorage.setItem('snowMode', String(snowMode));
+  }, [snowMode]);
 
   const handleLogin = (newUser: User) => {
     setUser(newUser);
@@ -53,6 +62,7 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
+      <SnowEffect enabled={snowMode} />
       <Layout 
         user={user} 
         onLogout={handleLogout}
@@ -74,7 +84,8 @@ const App: React.FC = () => {
           <Route path="/purchases" element={user ? <PurchaseRequests user={user} /> : <Navigate to="/login" />} />
 
           <Route path="/admin" element={user?.role === UserRole.ADMIN ? <AdminPanel /> : <Navigate to="/" />} />
-          <Route path="/settings" element={user ? <Settings user={user} /> : <Navigate to="/login" />} />
+          
+          <Route path="/settings" element={user ? <Settings user={user} snowMode={snowMode} setSnowMode={setSnowMode} /> : <Navigate to="/login" />} />
           
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
