@@ -1,0 +1,8 @@
+{
+  "name": "Sabanur CMMS",
+  "description": "Comprehensive Maintenance & Repair Management System for Sabanur Factory",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
