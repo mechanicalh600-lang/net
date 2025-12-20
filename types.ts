@@ -1,8 +1,11 @@
+
 export enum UserRole {
   ADMIN = 'ADMIN',
   USER = 'USER',
   STOREKEEPER = 'STOREKEEPER',
-  INSPECTOR = 'INSPECTOR'
+  INSPECTOR = 'INSPECTOR',
+  MANAGER = 'MANAGER', // Added Manager
+  EXPERT = 'EXPERT'    // Added Expert
 }
 
 export interface User {
@@ -24,7 +27,73 @@ export interface LogEntry {
   ip: string;
 }
 
-// Master Data Interfaces
+// --- Workflow Types ---
+export interface WorkflowAction {
+  id: string;
+  label: string;
+  nextStepId: string | 'FINISH';
+  style: 'primary' | 'danger' | 'success' | 'neutral';
+  requiredRole?: UserRole;
+}
+
+export interface WorkflowStep {
+  id: string;
+  title: string;
+  assigneeRole: UserRole | 'INITIATOR'; // Who should perform this step
+  description?: string;
+  actions: WorkflowAction[];
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  module: string; // 'WORK_ORDER', 'PROJECT', etc.
+  title: string;
+  steps: WorkflowStep[];
+  isActive: boolean;
+}
+
+export interface CartableItem {
+  id: string;
+  workflowId: string;
+  trackingCode: string;
+  module: string;
+  title: string;
+  description: string;
+  currentStepId: string;
+  initiatorId: string;
+  assigneeRole: UserRole | 'INITIATOR';
+  assigneeId?: string; // Optional: specific user assignment
+  status: 'PENDING' | 'DONE' | 'REJECTED';
+  createdAt: string;
+  updatedAt: string;
+  data: any; // The actual entity data (WorkOrder, Project, etc.)
+}
+
+export interface WorkflowHistory {
+  id: string;
+  cartableItemId: string;
+  stepId: string;
+  actorId: string;
+  actionTaken: string;
+  comment?: string;
+  timestamp: string;
+}
+
+// --- Internal Messaging ---
+export interface Message {
+    id: string;
+    senderId: string;
+    senderName: string;
+    receiverId: string; // Could be userId, role name, or 'ALL'
+    receiverType: 'USER' | 'GROUP' | 'ALL'; // Added to distinguish target
+    subject: string;
+    body: string;
+    createdAt: string;
+    readBy: string[]; // Array of user IDs who read the message
+}
+
+// --- Entity Types ---
+
 export interface Location {
   id: string;
   code: string;
@@ -41,109 +110,52 @@ export interface Equipment {
   description?: string;
 }
 
-export interface Part {
+export interface Project {
   id: string;
-  code: string;
-  name: string;
-  groupId: string;
-  unit: string;
+  title: string;
+  manager: string;
+  budget: number;
+  startDate: string;
+  endDate: string;
+  progress: number;
+  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'HALTED';
+  description: string;
 }
+
+export interface PerformanceScore {
+  id: string;
+  personnelId: string;
+  period: string; // e.g., "1403-01"
+  score: number; // 0-100
+  criteria: { label: string; score: number; max: number }[];
+  evaluatorId: string;
+  notes?: string;
+}
+
+// Updated Statuses based on user request
+export type WorkOrderStatus = 'REQUEST' | 'IN_PROGRESS' | 'VERIFICATION' | 'FINISHED';
 
 export interface WorkOrder {
   id: string;
-  trackingCode: string; // W...
+  trackingCode: string; 
   equipmentId: string;
-  requestDate: string; // Shamsi string
+  requestDate: string; 
   requesterId: string;
   failureDescription: string;
   actionTaken?: string;
   startTime?: string;
   endTime?: string;
-  downtime?: number; // minutes
-  status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
+  downtime?: number; 
+  status: WorkOrderStatus; // Updated
   attachments: string[];
+  [key: string]: any; // Allow flexibility for workflow data
 }
 
-export interface PartRequest {
-  id: string;
-  trackingCode: string; // P...
-  requesterId: string;
-  partId: string;
-  quantity: number;
-  workOrderId?: string;
-  status: 'PENDING' | 'APPROVED' | 'DELIVERED';
-  deliveryDate?: string;
-}
-
-export interface ChecklistItem {
-  id: string;
-  activityCardId: string;
-  order: number;
-  description: string;
-}
-
-export interface InspectionResult {
-  id: string;
-  trackingCode: string; // J...
-  inspectorId: string;
-  equipmentId: string; // Derived from plan
-  date: string;
-  items: {
-    checklistItemId: string;
-    status: 'OK' | 'NOK';
-    description?: string;
-    media?: string;
-  }[];
-}
-
-export interface DashboardStat {
-  name: string;
-  value: number;
-  color: string;
-}
-
-// New Modules
-export interface TechnicalDocument {
-  id: string;
-  archiveCode: string;
-  name: string;
-  type: string;
-  file?: string;
-}
-
-export interface MeetingMinutes {
-  id: string;
-  trackingCode: string; // G...
-  meetingCode: string;
-  name: string;
-  subject: string;
-  location: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  attendees: string;
-  decisions: string;
-}
-
-export interface TechnicalSuggestion {
-  id: string;
-  trackingCode: string; // H...
-  suggesterId: string; // User ID
-  suggestion: string;
-  date: string;
-}
-
-export interface PurchaseRequest {
-  id: string;
-  trackingCode: string; // K...
-  requesterId: string;
-  requestNumber: string; // Manual Input
-  date: string;
-  location: 'HQ' | 'SITE';
-  priority: 'HIGH' | 'MEDIUM' | 'LOW';
-  description: string;
-  quantity: number;
-  unit: string;
-  status: string;
-  expertName: string;
-}
+export interface PartRequest { id: string; [key: string]: any; }
+export interface ChecklistItem { id: string; activityCardId: string; order: number; description: string; }
+export interface InspectionResult { id: string; [key: string]: any; }
+export interface DashboardStat { name: string; value: number; color: string; }
+export interface TechnicalDocument { id: string; [key: string]: any; }
+export interface MeetingMinutes { id: string; [key: string]: any; }
+export interface TechnicalSuggestion { id: string; [key: string]: any; }
+export interface PurchaseRequest { id: string; [key: string]: any; }

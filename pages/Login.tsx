@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { APP_VERSION } from '../constants';
-import { Lock, User as UserIcon, Eye, EyeOff } from 'lucide-react';
+import { Lock, User as UserIcon, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
+import { Logo } from '../components/Logo';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -20,7 +22,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     username: 'admin',
     fullName: 'مدیر سیستم',
     role: UserRole.ADMIN,
-    passwordHash: 'admin', // In real app, this is hashed
+    passwordHash: 'admin',
     isDefaultPassword: true
   };
 
@@ -28,7 +30,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     e.preventDefault();
     setError('');
 
-    if (username === 'admin' && password === 'admin') {
+    if (username.toLowerCase() === 'admin' && password === 'admin') {
       if (isResetMode) {
          const updatedUser = { ...adminUser, isDefaultPassword: false };
          onLogin(updatedUser);
@@ -55,115 +57,145 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       onLogin({ ...adminUser, isDefaultPassword: false });
   }
 
-  // Sabanur Brand Color
-  const BRAND_COLOR = "#800020";
+  // Mock Build Hash
+  const BUILD_HASH = "b7a9f2c";
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 relative overflow-hidden">
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 relative overflow-hidden font-sans">
       
-      {/* Background Decor */}
-      <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-[#800020]/10 to-transparent pointer-events-none"></div>
+      {/* Abstract Background Pattern */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-[20%] -right-[10%] w-[70vw] h-[70vw] rounded-full bg-[#800020]/5 blur-3xl"></div>
+          <div className="absolute top-[40%] -left-[10%] w-[50vw] h-[50vw] rounded-full bg-blue-500/5 blur-3xl"></div>
+      </div>
       
-      <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden relative z-10">
+      <div className="w-full max-w-sm z-10 flex flex-col gap-8">
         
         {/* Branding Section */}
-        <div className="pt-10 pb-4 px-6 text-center flex flex-col items-center">
-             {/* Sabanur SVG Logo */}
-             <div className="mb-6 drop-shadow-xl filter">
-                <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M50 5L93.3013 30V80L50 105L6.69873 80V30L50 5Z" fill={BRAND_COLOR} fillOpacity="0.1" stroke={BRAND_COLOR} strokeWidth="2"/>
-                    <path d="M50 20L75 40V70L50 85L25 70V40L50 20Z" fill="white" stroke={BRAND_COLOR} strokeWidth="3"/>
-                    <path d="M50 35L35 60H65L50 35Z" fill={BRAND_COLOR}/>
-                    <path d="M32 68H68V72H32V68Z" fill={BRAND_COLOR}/>
-                </svg>
+        <div className="text-center flex flex-col items-center animate-fadeIn">
+             {/* Logo Container - Seamless Background */}
+             <div className="w-32 h-32 flex items-center justify-center mb-4 transform hover:scale-105 transition duration-500">
+                {/* Logo Component imported from components/Logo.tsx */}
+                <Logo className="w-full h-full drop-shadow-2xl" />
              </div>
              
-             <h1 className="text-xl md:text-2xl font-black mb-2 leading-tight" style={{ color: BRAND_COLOR }}>
+             <h1 className="text-lg font-black text-[#800020] dark:text-red-400 leading-tight mb-2 px-4">
                 شرکت توسعه معدنی و صنعتی صبانور
              </h1>
-             <p className="text-gray-500 dark:text-gray-400 font-medium text-lg tracking-widest border-b-2 border-primary/20 pb-1">
-                سامانه هوشمند نت
+             <p className="text-sm text-gray-500 dark:text-gray-400 font-medium tracking-wide">
+                سامانه هوشمند نگهداری و تعمیرات
              </p>
         </div>
 
-        <div className="p-8 pt-4">
+        {/* Card */}
+        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-3xl shadow-xl p-6 md:p-8 animate-slideUp border border-white/50 dark:border-gray-700/50">
             {isResetMode ? (
-                 <form onSubmit={handlePasswordChange} className="space-y-6 animate-fadeIn">
-                    <div className="bg-yellow-50 text-yellow-700 p-3 rounded-lg text-xs mb-4">
-                        به دلیل اولین ورود، لطفا رمز عبور خود را تغییر دهید.
+                 <form onSubmit={handlePasswordChange} className="space-y-5">
+                    <div className="bg-yellow-50 text-yellow-800 px-4 py-3 rounded-xl text-sm mb-4 border border-yellow-100 flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                        <span>جهت امنیت بیشتر، لطفاً برای اولین ورود رمز عبور خود را تغییر دهید.</span>
                     </div>
-                    <div className="relative">
-                        <Lock className="absolute right-3 top-3.5 w-5 h-5 text-gray-400" />
-                        <input
-                            type="password"
-                            placeholder="رمز عبور جدید"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="w-full pr-10 pl-4 py-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-[#800020] outline-none transition-all"
-                            required
-                        />
-                    </div>
-                    <button type="submit" className="w-full bg-[#800020] hover:bg-[#600018] text-white py-3.5 rounded-xl font-bold transition-all transform active:scale-95 shadow-lg shadow-red-900/20">
-                        تغییر رمز و ورود
-                    </button>
-                 </form>
-            ) : (
-                <form onSubmit={handleSubmit} className="space-y-5 animate-fadeIn">
-                    <div className="space-y-4">
-                        <div className="relative group">
-                            <UserIcon className="absolute right-3 top-3.5 w-5 h-5 text-gray-400 group-focus-within:text-[#800020] transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="نام کاربری"
-                                value={username}
-                                onChange={(e) => setUsername(e.target.value)}
-                                className="w-full pr-10 pl-4 py-3.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-[#800020] outline-none transition-all"
-                                required
-                            />
-                        </div>
-
-                        <div className="relative group">
-                            <Lock className="absolute right-3 top-3.5 w-5 h-5 text-gray-400 group-focus-within:text-[#800020] transition-colors" />
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-500 mr-1">رمز عبور جدید</label>
+                        <div className="relative">
+                            <Lock className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                             <input
                                 type={showPassword ? 'text' : 'password'}
-                                placeholder="رمز عبور"
+                                placeholder="●●●●●"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pr-10 pl-12 py-3.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-[#800020] outline-none transition-all"
+                                className="w-full pr-12 pl-4 h-14 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-600 rounded-2xl focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all text-lg"
+                                style={{ fontFamily: showPassword ? 'inherit' : 'Verdana, sans-serif' }}
                                 required
+                                autoFocus
                             />
-                            <button 
+                             <button 
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute left-3 top-3.5 text-gray-400 hover:text-gray-600"
+                                className="absolute left-0 top-0 bottom-0 px-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex items-center justify-center"
                             >
                                 {showPassword ? <EyeOff className="w-5 h-5"/> : <Eye className="w-5 h-5"/>}
                             </button>
                         </div>
                     </div>
+                    <button type="submit" className="w-full bg-[#800020] hover:bg-[#600018] text-white h-14 rounded-2xl font-bold text-lg transition-all transform active:scale-95 shadow-lg shadow-red-900/20 flex items-center justify-center gap-2">
+                        تغییر رمز و ورود
+                    </button>
+                 </form>
+            ) : (
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500 mr-1">نام کاربری</label>
+                            <div className="relative group">
+                                <UserIcon className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-[#800020] transition-colors" />
+                                <input
+                                    type="text"
+                                    placeholder="نام کاربری خود را وارد کنید"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    className="w-full pr-12 pl-4 h-14 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-600 rounded-2xl focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all text-gray-800 dark:text-gray-100"
+                                    required
+                                    autoComplete="username"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500 mr-1">رمز عبور</label>
+                            <div className="relative group">
+                                <Lock className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-[#800020] transition-colors" />
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    placeholder="●●●●●"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full pr-12 pl-12 h-14 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-600 rounded-2xl focus:ring-2 focus:ring-[#800020] focus:border-transparent outline-none transition-all text-gray-800 dark:text-gray-100 tracking-wider"
+                                    style={{ fontFamily: showPassword ? 'inherit' : 'Verdana, sans-serif' }}
+                                    required
+                                    autoComplete="current-password"
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute left-0 top-0 bottom-0 px-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex items-center justify-center"
+                                >
+                                    {showPassword ? <EyeOff className="w-5 h-5"/> : <Eye className="w-5 h-5"/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
 
                     {error && (
-                    <div className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 p-3 rounded-lg flex items-center justify-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                    <div className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/10 p-3 rounded-xl border border-red-100 dark:border-red-900/20 flex items-center justify-center gap-2 animate-shake">
+                         <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
                         {error}
                     </div>
                     )}
 
                     <button
                         type="submit"
-                        className="w-full bg-[#800020] hover:bg-[#600018] text-white py-3.5 rounded-xl font-bold transition-all transform active:scale-95 shadow-xl shadow-red-900/20 flex items-center justify-center gap-2"
+                        className="w-full bg-[#800020] hover:bg-[#600018] text-white h-14 rounded-2xl font-bold text-lg transition-all transform active:scale-[0.98] shadow-xl shadow-red-900/20 flex items-center justify-center gap-2 mt-2"
                     >
-                        ورود به سیستم
+                        <span>ورود به حساب</span>
+                        <LogIn className="w-5 h-5" />
                     </button>
                 </form>
             )}
         </div>
-      </div>
 
-      <footer className="mt-8 text-center opacity-70">
-        <p className="text-gray-500 dark:text-gray-400 text-xs font-mono mb-1">VERSION {APP_VERSION}</p>
-        <p className="text-gray-400 dark:text-gray-500 text-[10px] font-bold tracking-widest uppercase">DESIGN BY H.PARSA</p>
-      </footer>
+        <div className="text-center space-y-1 pb-4">
+            <p className="text-gray-400 dark:text-gray-500 text-[10px] font-bold tracking-widest uppercase">
+                نسخه {APP_VERSION}
+            </p>
+            <p className="text-gray-300 dark:text-gray-600 text-[9px] font-bold tracking-[0.1em] uppercase font-mono opacity-50">
+                Hash: {BUILD_HASH}
+            </p>
+            <p className="text-gray-300 dark:text-gray-600 text-[9px] font-bold tracking-[0.3em] uppercase font-sans opacity-70 mt-2">
+                DESIGN BY H.PARSA
+            </p>
+        </div>
+      </div>
     </div>
   );
 };

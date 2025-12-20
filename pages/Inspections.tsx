@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User } from '../types';
 import { QrCode, Check, X, Camera, Mic, Share2, Home } from 'lucide-react';
@@ -147,8 +148,9 @@ export const Inspections: React.FC<Props> = ({ user }) => {
                       </div>
                   ) : (
                       <div className="space-y-3 animate-fadeIn">
+                          <label className="text-xs font-bold text-red-500 block mb-1">توضیحات خرابی <span className="text-red-500">*</span></label>
                           <div className="relative">
-                            <input type="text" placeholder="توضیحات خرابی (اجباری)..." className="w-full p-2 pr-10 border border-red-300 rounded-lg bg-red-50 dark:bg-red-900/10" autoFocus />
+                            <input type="text" placeholder="شرح مشکل مشاهده شده..." className="w-full p-2 pr-10 border border-red-300 rounded-lg bg-red-50 dark:bg-red-900/10" autoFocus />
                             <Mic className="absolute left-2 top-2 text-gray-400 w-5 h-5" />
                           </div>
                           <div className="flex justify-between items-center">

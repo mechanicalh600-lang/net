@@ -27,12 +27,21 @@ export const TimePicker24: React.FC<Props> = ({ value, onChange, label, error })
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSelect = (h: string, m: string) => {
+  const [selectedH, selectedM] = value ? value.split(':') : ['--', '--'];
+
+  const handleHourSelect = (h: string) => {
+    // If no minute is selected yet, default to 00, otherwise keep existing
+    const m = selectedM === '--' ? '00' : selectedM;
     onChange(`${h}:${m}`);
-    // Don't close immediately allows adjusting
+    // Do NOT close dropdown, wait for minute selection
   };
 
-  const [selectedH, selectedM] = value ? value.split(':') : ['--', '--'];
+  const handleMinuteSelect = (m: string) => {
+    // If no hour is selected yet, default to 00 (or current hour logic), otherwise keep existing
+    const h = selectedH === '--' ? '00' : selectedH;
+    onChange(`${h}:${m}`);
+    setIsOpen(false); // Close dropdown after minute selection
+  };
 
   return (
     <div className="relative" ref={wrapperRef}>
@@ -55,26 +64,6 @@ export const TimePicker24: React.FC<Props> = ({ value, onChange, label, error })
 
       {isOpen && (
         <div className="absolute top-full left-0 z-50 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-600 p-2 animate-fadeIn flex gap-2 h-64">
-           {/* Hours Column */}
-           <div className="flex-1 overflow-y-auto no-scrollbar rounded-lg bg-gray-50 dark:bg-gray-700/50">
-               <div className="text-xs text-center text-gray-400 py-1 sticky top-0 bg-gray-50 dark:bg-gray-700/50">ساعت</div>
-               {hours.map(h => (
-                   <button
-                    key={h}
-                    type="button"
-                    onClick={() => handleSelect(h, selectedM === '--' ? '00' : selectedM)}
-                    className={`w-full text-center py-2 text-sm font-mono rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition
-                        ${selectedH === h ? 'bg-primary text-white hover:bg-primary font-bold shadow-sm' : 'text-gray-700 dark:text-gray-300'}
-                    `}
-                   >
-                       {h}
-                   </button>
-               ))}
-           </div>
-           
-           {/* Divider */}
-           <div className="flex items-center justify-center font-bold text-gray-300">:</div>
-
            {/* Minutes Column */}
            <div className="flex-1 overflow-y-auto no-scrollbar rounded-lg bg-gray-50 dark:bg-gray-700/50">
                <div className="text-xs text-center text-gray-400 py-1 sticky top-0 bg-gray-50 dark:bg-gray-700/50">دقیقه</div>
@@ -82,12 +71,32 @@ export const TimePicker24: React.FC<Props> = ({ value, onChange, label, error })
                    <button
                     key={m}
                     type="button"
-                    onClick={() => handleSelect(selectedH === '--' ? '00' : selectedH, m)}
+                    onClick={() => handleMinuteSelect(m)}
                     className={`w-full text-center py-2 text-sm font-mono rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition
                         ${selectedM === m ? 'bg-primary text-white hover:bg-primary font-bold shadow-sm' : 'text-gray-700 dark:text-gray-300'}
                     `}
                    >
                        {m}
+                   </button>
+               ))}
+           </div>
+
+           {/* Divider */}
+           <div className="flex items-center justify-center font-bold text-gray-300">:</div>
+
+           {/* Hours Column */}
+           <div className="flex-1 overflow-y-auto no-scrollbar rounded-lg bg-gray-50 dark:bg-gray-700/50">
+               <div className="text-xs text-center text-gray-400 py-1 sticky top-0 bg-gray-50 dark:bg-gray-700/50">ساعت</div>
+               {hours.map(h => (
+                   <button
+                    key={h}
+                    type="button"
+                    onClick={() => handleHourSelect(h)}
+                    className={`w-full text-center py-2 text-sm font-mono rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition
+                        ${selectedH === h ? 'bg-primary text-white hover:bg-primary font-bold shadow-sm' : 'text-gray-700 dark:text-gray-300'}
+                    `}
+                   >
+                       {h}
                    </button>
                ))}
            </div>

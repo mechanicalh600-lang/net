@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import { gregorianToJalali, jalaliToGregorian, getShamsiDate, isFutureDate } from '../utils';
+import { jalaliToGregorian, getShamsiDate, isFutureDate } from '../utils';
 
 interface Props {
   value: string;
@@ -43,6 +43,8 @@ export const ShamsiDatePicker: React.FC<Props> = ({ value, onChange, label, erro
     "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
     "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
   ];
+  
+  const weekDays = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
 
   const getDaysInMonth = (y: number, m: number) => {
     if (m <= 6) return 31;
@@ -118,7 +120,9 @@ export const ShamsiDatePicker: React.FC<Props> = ({ value, onChange, label, erro
           </div>
 
           <div className="grid grid-cols-7 mb-2 text-center text-xs font-medium text-gray-400">
-            <span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span>
+            {weekDays.map((day, index) => (
+                <span key={index} className={index === 6 ? 'text-red-500 font-bold' : ''}>{day}</span>
+            ))}
           </div>
 
           <div className="grid grid-cols-7 gap-1">
@@ -130,6 +134,7 @@ export const ShamsiDatePicker: React.FC<Props> = ({ value, onChange, label, erro
                const dateStr = `${viewYear}/${String(viewMonth).padStart(2, '0')}/${String(d).padStart(2, '0')}`;
                const isSelected = value === dateStr;
                const isFuture = isFutureDate(dateStr);
+               const isFriday = (startDayOfWeek + i) % 7 === 6;
                
                return (
                  <button
@@ -142,7 +147,9 @@ export const ShamsiDatePicker: React.FC<Props> = ({ value, onChange, label, erro
                        ? 'bg-primary text-white shadow-md font-bold' 
                        : isFuture 
                          ? 'text-gray-200 dark:text-gray-600 cursor-not-allowed'
-                         : 'hover:bg-primary/10 text-gray-700 dark:text-gray-300'}`}
+                         : isFriday
+                           ? 'text-red-500 font-medium hover:bg-red-50 dark:hover:bg-red-900/20'
+                           : 'hover:bg-primary/10 text-gray-700 dark:text-gray-300'}`}
                  >
                    {d}
                  </button>

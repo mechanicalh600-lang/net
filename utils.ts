@@ -104,6 +104,28 @@ export const compareShamsiDateTime = (d1: string, t1: string, d2: string, t2: st
   return 0;
 };
 
+export const calculateDurationMinutes = (d1: string, t1: string, d2: string, t2: string): number => {
+  const date1 = parseShamsiDate(d1);
+  const date2 = parseShamsiDate(d2);
+  
+  if (!date1 || !date2) return 0;
+
+  const [h1, m1] = t1.split(':').map(Number);
+  const [h2, m2] = t2.split(':').map(Number);
+  
+  date1.setHours(h1 || 0, m1 || 0, 0, 0);
+  date2.setHours(h2 || 0, m2 || 0, 0, 0);
+
+  const diffMs = date2.getTime() - date1.getTime();
+  return Math.max(0, Math.floor(diffMs / 60000));
+};
+
+export const formatMinutesToTime = (totalMinutes: number): string => {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}:${String(minutes).padStart(2, '0')}`;
+};
+
 export const isFutureDate = (shamsiDate: string): boolean => {
   const date = parseShamsiDate(shamsiDate);
   if (!date) return false;

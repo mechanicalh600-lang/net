@@ -1,74 +1,231 @@
-import React, { useState } from 'react';
-import { Mic, Save, Plus, Paperclip, Trash2, AlertTriangle, Share2, CheckCircle, Home, Copy } from 'lucide-react';
-import { generateTrackingCode, compareShamsiDateTime, isFutureDate } from '../utils';
+
+import React, { useState, useRef, useEffect } from 'react';
+import { Mic, Save, Plus, Paperclip, Trash2, AlertTriangle, CheckCircle, Loader2, Timer, Activity, ListChecks } from 'lucide-react';
+import { generateTrackingCode, compareShamsiDateTime, isFutureDate, calculateDurationMinutes, formatMinutesToTime, getShamsiDate, getTime } from '../utils';
 import { ShamsiDatePicker } from '../components/ShamsiDatePicker';
-import { TimePicker24 } from '../components/TimePicker24';
+import { ClockTimePicker } from '../components/ClockTimePicker';
 import { useNavigate } from 'react-router-dom';
+import { startWorkflow, fetchMasterData, fetchNextTrackingCode } from '../workflowStore';
 
 type Tab = 'GENERAL' | 'LABOR' | 'PARTS' | 'DOCS';
 
-// Mock Master Data
-const MOCK_EQUIPMENT = {
-  'PM-101': { name: 'پمپ تغذیه بویلر' },
-  'CV-202': { name: 'نوار نقاله اصلی' },
-  'CR-300': { name: 'سنگ شکن فکی' },
-};
+interface LaborRow {
+    id: string;
+    name: string;
+    startDate: string;
+    startTime: string;
+    endDate: string;
+    endTime: string;
+    durationMinutes: number;
+}
 
-export const WorkOrders: React.FC = () => {
+interface PartRow {
+    id: string;
+    code: string;
+    name: string;
+    qty: number;
+    unit: string;
+}
+
+interface WorkOrdersProps {
+  initialData?: any;
+  onProcessComplete?: (data: any) => void;
+}
+
+export const WorkOrders: React.FC<WorkOrdersProps> = ({ initialData, onProcessComplete }) => {
   const navigate = useNavigate();
+  const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+  
+  const isExecutorMode = !!initialData;
+  const pageTitle = isExecutorMode ? 'تکمیل دستور کار (مجری)' : 'ثبت درخواست کار';
+
   const [activeTab, setActiveTab] = useState<Tab>('GENERAL');
   const [trackingCode, setTrackingCode] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  const [workflowStarted, setWorkflowStarted] = useState(false);
+  const [listeningField, setListeningField] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Form State
+  // Dynamic Data States
+  const [units, setUnits] = useState<any[]>([]);
+  const [allEquipment, setAllEquipment] = useState<any[]>([]);
+  const [allLocalNames, setAllLocalNames] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  
+  // Filtered Options States
+  const [filteredEquipment, setFilteredEquipment] = useState<any[]>([]);
+  const [filteredLocalNames, setFilteredLocalNames] = useState<any[]>([]);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [formData, setFormData] = useState({
       equipCode: '',
       equipName: '',
       equipLocalName: '',
+      locationId: '',
       productionLine: '',
-      requester: 'علی محمدی',
+      requester: user.fullName || 'کاربر ناشناس',
+      reportDate: getShamsiDate(),
+      reportTime: getTime(),
+      workCategory: 'MECHANICAL',
+      workType: 'REPAIR',
+      priority: 'NORMAL',
       failureDesc: '',
       actionDesc: '',
-      // Dates
-      startDate: '',
+      startDate: getShamsiDate(),
       startTime: '',
-      endDate: '',
+      endDate: getShamsiDate(),
       endTime: '',
-      // Metrics
       downtime: '',
       repairTime: ''
   });
 
-  // Sub-lists State
-  const [laborRows, setLaborRows] = useState<{id: string, name: string, hours: number}[]>([]);
-  const [partRows, setPartRows] = useState<{id: string, name: string, qty: number}[]>([]);
+  const [laborRows, setLaborRows] = useState<LaborRow[]>([]);
+  const [partRows, setPartRows] = useState<PartRow[]>([]);
   const [docRows, setDocRows] = useState<{id: string, name: string}[]>([]);
 
-  // Handlers
+  // Initial Data Load
+  useEffect(() => {
+    const loadMasterData = async () => {
+        const eq = await fetchMasterData('equipment');
+        const ln = await fetchMasterData('equipment_local_names');
+        const loc = await fetchMasterData('locations');
+        
+        setAllEquipment(eq);
+        setAllLocalNames(ln);
+        setFilteredEquipment(eq);
+        setFilteredLocalNames(ln);
+        setLocations(loc);
+        
+        setUnits(await fetchMasterData('measurement_units'));
+    };
+    loadMasterData();
+
+    if (initialData) {
+        setFormData(prev => ({ ...prev, ...initialData }));
+        if (initialData.labor) setLaborRows(initialData.labor);
+        if (initialData.parts) setPartRows(initialData.parts);
+        if (initialData.docs) setDocRows(initialData.docs);
+    }
+  }, [initialData]);
+
+  // Bi-directional Filter Logic: Equipment Code Change
   const handleEquipmentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const code = e.target.value;
-      const equip = MOCK_EQUIPMENT[code as keyof typeof MOCK_EQUIPMENT];
+      const equip = allEquipment.find(eq => eq.code === code);
       
+      if (!equip) {
+          // Reset
+          setFormData(prev => ({ ...prev, equipCode: '', equipName: '', locationId: '' }));
+          setFilteredLocalNames(allLocalNames);
+          return;
+      }
+
       setFormData(prev => ({
           ...prev,
           equipCode: code,
-          equipName: equip ? equip.name : '',
+          equipName: equip.name,
+          locationId: equip.location_id || ''
       }));
+
+      // Filter Local Names based on selected Equipment's Class & Group
+      if (equip.class_id && equip.group_id) {
+          const relevantLocalNames = allLocalNames.filter(ln => 
+              ln.class_id === equip.class_id && ln.group_id === equip.group_id
+          );
+          setFilteredLocalNames(relevantLocalNames);
+      } else {
+          setFilteredLocalNames(allLocalNames);
+      }
+  };
+
+  // Bi-directional Filter Logic: Local Name Change
+  const handleLocalNameChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const localNameStr = e.target.value;
+      const localNameObj = allLocalNames.find(ln => ln.local_name === localNameStr);
+
+      setFormData(prev => ({ ...prev, equipLocalName: localNameStr }));
+
+      if (localNameObj && localNameObj.class_id && localNameObj.group_id) {
+          // Filter Equipment based on selected Local Name's Class & Group
+          const relevantEquipment = allEquipment.filter(eq => 
+              eq.class_id === localNameObj.class_id && eq.group_id === localNameObj.group_id
+          );
+          setFilteredEquipment(relevantEquipment);
+      } else {
+          setFilteredEquipment(allEquipment);
+      }
+  };
+
+  const handleVoiceInput = (field: 'failureDesc' | 'actionDesc') => {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+          alert('مرورگر شما از قابلیت تبدیل گفتار به نوشتار پشتیبانی نمی‌کند.');
+          return;
+      }
+      if (listeningField === field) {
+          setListeningField(null);
+          return;
+      }
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'fa-IR';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.onstart = () => setListeningField(field);
+      recognition.onend = () => setListeningField(null);
+      recognition.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          setFormData(prev => ({
+              ...prev,
+              [field]: prev[field] ? `${prev[field]} ${transcript}` : transcript
+          }));
+      };
+      recognition.start();
   };
 
   const handleAddLabor = () => {
-      setLaborRows([...laborRows, { id: Math.random().toString(), name: '', hours: 1 }]);
+      setLaborRows([...laborRows, { 
+          id: Math.random().toString(), 
+          name: '', 
+          startDate: formData.startDate,
+          startTime: formData.startTime || '08:00',
+          endDate: formData.endDate,
+          endTime: formData.endTime || '16:00',
+          durationMinutes: 0
+      }]);
+  };
+
+  const updateLaborRow = (id: string, field: keyof LaborRow, value: any) => {
+      setLaborRows(prev => prev.map(row => {
+          if (row.id !== id) return row;
+          const updated = { ...row, [field]: value };
+          if (['startDate', 'startTime', 'endDate', 'endTime'].includes(field)) {
+              updated.durationMinutes = calculateDurationMinutes(
+                  updated.startDate, updated.startTime,
+                  updated.endDate, updated.endTime
+              );
+          }
+          return updated;
+      }));
   };
 
   const handleAddPart = () => {
-      setPartRows([...partRows, { id: Math.random().toString(), name: '', qty: 1 }]);
+      setPartRows([...partRows, { id: Math.random().toString(), code: '', name: '', qty: 1, unit: units[0]?.title || 'عدد' }]);
   };
 
-  const handleAddDoc = () => {
-      const fakeFiles = ['نقشه فنی.pdf', 'عکس خرابی.jpg', 'دستورالعمل.pdf'];
-      const randomFile = fakeFiles[Math.floor(Math.random() * fakeFiles.length)];
-      setDocRows([...docRows, { id: Math.random().toString(), name: randomFile }]);
+  const updatePartRow = (id: string, field: keyof PartRow, value: any) => {
+      setPartRows(prev => prev.map(row => row.id === id ? { ...row, [field]: value } : row));
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const newDocs = Array.from(e.target.files).map((file: File) => ({
+        id: Math.random().toString(),
+        name: file.name
+      }));
+      setDocRows(prev => [...prev, ...newDocs]);
+      e.target.value = '';
+    }
   };
 
   const handleRemoveRow = (setter: React.Dispatch<React.SetStateAction<any[]>>, id: string) => {
@@ -76,83 +233,60 @@ export const WorkOrders: React.FC = () => {
   };
 
   const validateForm = () => {
-    // 1. Mandatory Fields Check
-    if (!formData.equipCode || !formData.equipName || !formData.equipLocalName || !formData.productionLine) return "لطفا تمام مشخصات تجهیز را تکمیل کنید.";
-    if (!formData.startDate || !formData.startTime || !formData.endDate || !formData.endTime) return "لطفا زمان‌بندی کار را کامل وارد کنید.";
+    // Basic validations
+    if (!formData.equipCode && !formData.equipLocalName) return "لطفا تجهیز یا نام محلی آن را مشخص کنید.";
+    if (!formData.productionLine) return "لطفا خط تولید را مشخص کنید.";
+    if (!formData.workCategory) return "لطفا نوع کار (دیسیپلین) را مشخص کنید.";
     if (!formData.failureDesc) return "شرح خرابی الزامی است.";
-    if (!formData.actionDesc) return "اقدام صورت گرفته الزامی است.";
-    if (!formData.downtime || !formData.repairTime) return "مدت توقف و زمان خالص تعمیر الزامی است.";
-
-    // 2. Future Date Check
-    if (isFutureDate(formData.startDate) || isFutureDate(formData.endDate)) {
-        return "تاریخ شروع و پایان نمی‌تواند بزرگتر از تاریخ امروز باشد.";
+    
+    if (isExecutorMode) {
+        if (!formData.actionDesc) return "اقدام صورت گرفته الزامی است.";
+        if (!formData.startDate || !formData.startTime || !formData.endDate || !formData.endTime) return "لطفا زمان‌بندی کار را کامل وارد کنید.";
+        if (!formData.downtime || !formData.repairTime) return "مدت توقف و زمان خالص تعمیر الزامی است.";
+        if (isFutureDate(formData.startDate) || isFutureDate(formData.endDate)) return "تاریخ شروع و پایان نمی‌تواند بزرگتر از تاریخ امروز باشد.";
+        if (compareShamsiDateTime(formData.startDate, formData.startTime, formData.endDate, formData.endTime) === 1) return "خطا: تاریخ و ساعت پایان نمی‌تواند کوچکتر از تاریخ و ساعت شروع باشد.";
     }
-
-    // 3. Logic Check (End < Start)
-    const comparison = compareShamsiDateTime(formData.startDate, formData.startTime, formData.endDate, formData.endTime);
-    if (comparison === 1) { 
-        return "تاریخ و ساعت اتمام نمی‌تواند قبل از تاریخ و ساعت شروع باشد.";
-    }
-
     return null;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-
     const error = validateForm();
     if (error) {
         setErrorMsg(error);
-        setActiveTab('GENERAL'); // Switch to general tab to show error
+        setActiveTab('GENERAL');
         window.scrollTo(0,0);
         return;
     }
 
-    const code = generateTrackingCode('W');
-    setTrackingCode(code);
-  };
-
-  const getShareText = () => {
-    let text = `🛠 *گزارش تعمیرات صبانور*\n\n` +
-           `📌 کد پیگیری: ${trackingCode}\n` +
-           `🏭 تجهیز: ${formData.equipName} (${formData.equipLocalName})\n` +
-           `📍 خط: ${formData.productionLine}\n` +
-           `⚠️ خرابی: ${formData.failureDesc}\n` +
-           `🔧 اقدام: ${formData.actionDesc}\n` +
-           `⏱ توقف: ${formData.downtime} دقیقه | خالص: ${formData.repairTime} دقیقه\n`;
-
-    if (laborRows.length > 0) {
-        text += `\n👷‍♂️ *نفرات:*\n` + laborRows.map(l => `- ${l.name || 'نامشخص'} (${l.hours}h)`).join('\n');
-    }
-
-    if (partRows.length > 0) {
-        text += `\n⚙️ *قطعات:*\n` + partRows.map(p => `- ${p.name || 'نامشخص'} (${p.qty})`).join('\n');
-    }
+    const fullData = { ...formData, labor: laborRows, parts: partRows, docs: docRows };
     
-    return text;
-  };
+    if (isExecutorMode && onProcessComplete) {
+        onProcessComplete(fullData);
+    } else {
+        // --- NEW: FETCH UNIQUE CODE FROM SUPABASE ---
+        setIsSubmitting(true);
+        try {
+            // Generate prefix based on date, e.g., "W2402"
+            const prefix = generateTrackingCode('W').substring(0, 5); // W + YYMM
+            const uniqueCode = await fetchNextTrackingCode(prefix);
 
-  const handleSmartShare = async () => {
-      const text = getShareText();
-      const shareData = {
-          title: 'گزارش تعمیرات صبانور',
-          text: text,
-      };
-
-      if (navigator.share) {
-          try {
-              await navigator.share(shareData);
-          } catch (err) {
-              console.log('Share canceled');
-          }
-      } else {
-          // Fallback to clipboard
-          navigator.clipboard.writeText(text).then(() => {
-              setShareFeedback('گزارش کپی شد!');
-              setTimeout(() => setShareFeedback(null), 2000);
-          });
-      }
+            const cartableItem = startWorkflow(
+                'WORK_ORDER', 
+                fullData, 
+                user, 
+                uniqueCode, 
+                `درخواست کار: ${formData.equipName || formData.equipLocalName} - ${formData.failureDesc.substring(0, 30)}...`
+            );
+            if (cartableItem) setWorkflowStarted(true);
+            setTrackingCode(uniqueCode);
+        } catch (err) {
+            setErrorMsg("خطا در ارتباط با سرور جهت دریافت کد رهگیری.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
   };
 
   if (trackingCode) {
@@ -163,121 +297,41 @@ export const WorkOrders: React.FC = () => {
                       <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
                           <CheckCircle className="w-10 h-10 text-white" />
                       </div>
-                      <h2 className="text-2xl font-bold mb-1">گزارش با موفقیت ثبت شد</h2>
+                      <h2 className="text-2xl font-bold mb-1">{workflowStarted ? 'درخواست ثبت و وارد کارتابل شد' : 'درخواست ثبت شد'}</h2>
                       <p className="opacity-90 font-mono text-lg">{trackingCode}</p>
                   </div>
-
-                  <div className="p-6 space-y-4">
-                      {/* Basic Info */}
-                      <div className="grid grid-cols-2 gap-4 text-sm bg-gray-50 dark:bg-gray-700/30 p-4 rounded-xl">
-                          <div>
-                              <span className="text-gray-500 block text-xs mb-1">تجهیز</span>
-                              <span className="font-bold block">{formData.equipName}</span>
-                              <span className="text-xs text-gray-400">({formData.equipLocalName})</span>
-                          </div>
-                          <div>
-                              <span className="text-gray-500 block text-xs mb-1">خط تولید</span>
-                              <span className="font-bold block">{formData.productionLine}</span>
-                          </div>
-                          <div>
-                              <span className="text-gray-500 block text-xs mb-1">مدت توقف</span>
-                              <span className="font-bold text-red-600">{formData.downtime} دقیقه</span>
-                          </div>
-                           <div>
-                              <span className="text-gray-500 block text-xs mb-1">زمان تعمیر</span>
-                              <span className="font-bold text-blue-600">{formData.repairTime} دقیقه</span>
-                          </div>
-                      </div>
-
-                       {/* Action Desc */}
-                      <div className="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg text-sm border-l-4 border-primary">
-                          <span className="text-gray-500 block text-xs mb-1 font-bold">شرح اقدام:</span>
-                          <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{formData.actionDesc}</p>
-                      </div>
-
-                      {/* Lists */}
-                      {(laborRows.length > 0 || partRows.length > 0) && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                              {laborRows.length > 0 && (
-                                  <div className="border rounded-lg p-3 text-sm dark:border-gray-700">
-                                      <h4 className="font-bold mb-2 text-gray-500 text-xs uppercase">نفرات فنی</h4>
-                                      <ul className="space-y-1">
-                                          {laborRows.map((l, i) => (
-                                              <li key={i} className="flex justify-between">
-                                                  <span>{l.name || '-'}</span>
-                                                  <span className="font-mono text-gray-400">{l.hours}h</span>
-                                              </li>
-                                          ))}
-                                      </ul>
-                                  </div>
-                              )}
-                              {partRows.length > 0 && (
-                                  <div className="border rounded-lg p-3 text-sm dark:border-gray-700">
-                                      <h4 className="font-bold mb-2 text-gray-500 text-xs uppercase">قطعات مصرفی</h4>
-                                      <ul className="space-y-1">
-                                          {partRows.map((p, i) => (
-                                              <li key={i} className="flex justify-between">
-                                                  <span>{p.name || '-'}</span>
-                                                  <span className="font-mono text-gray-400">x{p.qty}</span>
-                                              </li>
-                                          ))}
-                                      </ul>
-                                  </div>
-                              )}
-                          </div>
-                      )}
-
-                      <div className="flex flex-col gap-3 mt-6">
-                          <button 
-                            onClick={handleSmartShare}
-                            className="w-full bg-primary text-white py-3.5 rounded-xl flex items-center justify-center gap-2 font-medium hover:bg-red-800 transition shadow-lg shadow-red-900/20 active:scale-95"
-                          >
-                              {shareFeedback ? <CheckCircle className="w-5 h-5"/> : <Share2 className="w-5 h-5" />} 
-                              {shareFeedback || 'اشتراک‌گذاری گزارش'}
-                          </button>
-                           <button 
-                            onClick={() => navigate('/')}
-                            className="w-full bg-white border border-gray-200 dark:bg-gray-700 dark:border-gray-600 text-gray-700 dark:text-gray-300 py-3.5 rounded-xl flex items-center justify-center gap-2 font-medium hover:bg-gray-50 transition"
-                          >
-                              <Home className="w-5 h-5" /> بازگشت به داشبورد
-                          </button>
-                      </div>
+                  <div className="p-6 space-y-3">
+                      <button onClick={() => navigate('/work-orders')} className="w-full bg-white border border-gray-200 dark:bg-gray-700 py-3.5 rounded-xl flex items-center justify-center gap-2 font-medium hover:bg-gray-50 dark:hover:bg-gray-600">
+                          <ListChecks className="w-5 h-5" /> بازگشت به لیست دستور کارها
+                      </button>
+                      <button onClick={() => navigate('/')} className="w-full text-gray-500 py-2 text-sm">بازگشت به داشبورد</button>
                   </div>
               </div>
           </div>
       );
   }
 
-  const TabButton = ({ id, label }: { id: Tab; label: string }) => (
-    <button
-      type="button"
-      onClick={() => setActiveTab(id)}
-      className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap px-2
-        ${activeTab === id 
-          ? 'border-primary text-primary dark:text-red-400' 
-          : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
-        }`}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <div className="max-w-4xl mx-auto pb-20">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">ثبت گزارش کار</h1>
+        <h1 className="text-2xl font-bold">{pageTitle}</h1>
+        {isExecutorMode && <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-bold">حالت اجرایی</div>}
       </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+      
+       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
         <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-          <TabButton id="GENERAL" label="اطلاعات اصلی" />
-          <TabButton id="LABOR" label="نیروی انسانی" />
-          <TabButton id="PARTS" label="قطعات مصرفی" />
-          <TabButton id="DOCS" label="مستندات" />
+          <button type="button" onClick={() => setActiveTab('GENERAL')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'GENERAL' ? 'border-primary text-primary' : 'border-transparent'}`}>اطلاعات اصلی</button>
+          {isExecutorMode && (
+              <>
+                <button type="button" onClick={() => setActiveTab('LABOR')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'LABOR' ? 'border-primary text-primary' : 'border-transparent'}`}>کارکرد نفرات</button>
+                <button type="button" onClick={() => setActiveTab('PARTS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'PARTS' ? 'border-primary text-primary' : 'border-transparent'}`}>قطعات مصرفی</button>
+              </>
+          )}
+          <button type="button" onClick={() => setActiveTab('DOCS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'DOCS' ? 'border-primary text-primary' : 'border-transparent'}`}>مستندات</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6">
-          {errorMsg && (
+             {errorMsg && (
               <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 flex items-start gap-3 text-sm animate-pulse border border-red-100">
                   <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                   <span>{errorMsg}</span>
@@ -286,53 +340,68 @@ export const WorkOrders: React.FC = () => {
 
           {activeTab === 'GENERAL' && (
             <div className="space-y-6">
-              {/* Equipment Info Section */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-600">
+                  <div className="flex flex-col">
+                      <span className="text-xs text-gray-500 mb-1">درخواست کننده</span>
+                      <span className="font-bold text-sm">{formData.requester}</span>
+                  </div>
+                  <div className="flex flex-col">
+                      <span className="text-xs text-gray-500 mb-1">تاریخ گزارش</span>
+                      <span className="font-bold text-sm font-mono">{formData.reportDate}</span>
+                  </div>
+                  <div className="flex flex-col">
+                      <span className="text-xs text-gray-500 mb-1">ساعت گزارش</span>
+                      <span className="font-bold text-sm font-mono">{formData.reportTime}</span>
+                  </div>
+              </div>
+
               <div className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-xl border border-gray-100 dark:border-gray-700 space-y-4">
                   <h3 className="text-sm font-bold text-gray-500 mb-2">مشخصات تجهیز (اجباری)</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  
+                  {/* Equipment and Local Name Selection */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
-                        <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">
-                            کد تجهیز <span className="text-red-500">*</span>
-                        </label>
-                        <select 
+                        <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">نام محلی تجهیز <span className="text-red-500">*</span></label>
+                         <select 
                             required
-                            value={formData.equipCode}
-                            onChange={handleEquipmentChange}
-                            className="w-full p-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                            disabled={isExecutorMode}
+                            value={formData.equipLocalName}
+                            onChange={handleLocalNameChange}
+                            className={`w-full p-2.5 border rounded-xl outline-none ${isExecutorMode ? 'bg-gray-200 dark:bg-gray-600 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}
                         >
-                            <option value="">انتخاب کنید</option>
-                            {Object.entries(MOCK_EQUIPMENT).map(([code, equip]) => (
-                                <option key={code} value={code}>{code} - {equip.name}</option>
-                            ))}
+                            <option value="">انتخاب نام محلی...</option>
+                            {filteredLocalNames.length > 0 ? (
+                                filteredLocalNames.map(ln => <option key={ln.id} value={ln.local_name}>{ln.local_name}</option>)
+                            ) : (
+                                <option disabled>موردی یافت نشد</option>
+                            )}
                         </select>
                     </div>
                     <div>
-                        <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">نام تجهیز</label>
-                        <input 
-                            type="text" 
-                            readOnly 
-                            value={formData.equipName}
-                            className="w-full p-2.5 border rounded-xl bg-gray-200 dark:bg-gray-600 cursor-not-allowed opacity-70" 
-                        />
-                    </div>
-                     <div>
-                        <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">نام محلی <span className="text-red-500">*</span></label>
-                        <input 
-                            type="text" 
-                            required
-                            value={formData.equipLocalName}
-                            onChange={(e) => setFormData({...formData, equipLocalName: e.target.value})}
-                            className="w-full p-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary outline-none" 
-                            placeholder="نام رایج در کارخانه..."
-                        />
+                        <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">کد تجهیز (اختیاری)</label>
+                        {isExecutorMode ? (
+                            <input type="text" value={formData.equipCode} disabled className="w-full p-2.5 border rounded-xl bg-gray-200 dark:bg-gray-600 cursor-not-allowed" />
+                        ) : (
+                            <select 
+                                value={formData.equipCode}
+                                onChange={handleEquipmentChange}
+                                className="w-full p-2.5 border rounded-xl bg-white dark:bg-gray-700 outline-none disabled:bg-gray-100 disabled:dark:bg-gray-600"
+                            >
+                                <option value="">انتخاب کنید (اگر کد دارد)</option>
+                                {filteredEquipment.map(eq => (
+                                    <option key={eq.id} value={eq.code}>{eq.code} - {eq.name}</option>
+                                ))}
+                            </select>
+                        )}
                     </div>
                      <div>
                         <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">خط تولید <span className="text-red-500">*</span></label>
                         <select 
                             required
+                            disabled={isExecutorMode}
                             value={formData.productionLine}
                             onChange={(e) => setFormData({...formData, productionLine: e.target.value})}
-                            className="w-full p-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary outline-none" 
+                            className={`w-full p-2.5 border rounded-xl outline-none ${isExecutorMode ? 'bg-gray-200 dark:bg-gray-600 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}
                         >
                             <option value="">انتخاب کنید</option>
                             <option value="Line A">Line A</option>
@@ -341,233 +410,195 @@ export const WorkOrders: React.FC = () => {
                         </select>
                     </div>
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                            <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">نام فنی تجهیز (سیستمی)</label>
+                            <input type="text" readOnly value={formData.equipName} className="w-full p-2.5 border rounded-xl bg-gray-200 dark:bg-gray-600 cursor-not-allowed opacity-70" placeholder="پس از انتخاب کد تجهیز پر می‌شود" />
+                      </div>
+                      <div>
+                            <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">محل استقرار (Location)</label>
+                            <select 
+                                disabled={isExecutorMode}
+                                value={formData.locationId}
+                                onChange={(e) => setFormData({...formData, locationId: e.target.value})}
+                                className={`w-full p-2.5 border rounded-xl outline-none ${isExecutorMode ? 'bg-gray-200 dark:bg-gray-600 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}
+                            >
+                                <option value="">انتخاب کنید...</option>
+                                {locations.map(loc => <option key={loc.id} value={loc.id}>{loc.name}</option>)}
+                            </select>
+                      </div>
+                  </div>
               </div>
 
-              {/* Timing Section */}
-              <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800 space-y-4">
-                   <h3 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">زمان‌بندی کار (اجباری)</h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                       <div className="grid grid-cols-2 gap-3">
-                           <div className="col-span-2 md:col-span-1">
-                               <ShamsiDatePicker 
-                                   label="تاریخ شروع" 
-                                   value={formData.startDate} 
-                                   onChange={(d) => setFormData({...formData, startDate: d})} 
-                               />
-                           </div>
-                           <div className="col-span-2 md:col-span-1">
-                               <TimePicker24
-                                   label="ساعت شروع"
-                                   value={formData.startTime}
-                                   onChange={(t) => setFormData({...formData, startTime: t})}
-                               />
-                           </div>
-                       </div>
-                       
-                       <div className="grid grid-cols-2 gap-3">
-                           <div className="col-span-2 md:col-span-1">
-                               <ShamsiDatePicker 
-                                   label="تاریخ پایان" 
-                                   value={formData.endDate} 
-                                   onChange={(d) => setFormData({...formData, endDate: d})} 
-                               />
-                           </div>
-                           <div className="col-span-2 md:col-span-1">
-                               <TimePicker24
-                                   label="ساعت پایان"
-                                   value={formData.endTime}
-                                   onChange={(t) => setFormData({...formData, endTime: t})}
-                               />
-                           </div>
-                       </div>
-                   </div>
-
-                   <div className="grid grid-cols-2 gap-4 pt-2 border-t border-blue-100 dark:border-blue-800">
-                       <div>
-                           <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">مدت توقف (دقیقه)</label>
-                           <input 
-                              type="number" 
-                              min="0"
-                              placeholder="0"
-                              required
-                              value={formData.downtime}
-                              onChange={(e) => setFormData({...formData, downtime: e.target.value})}
-                              className="w-full p-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-red-500 outline-none text-center"
-                           />
-                       </div>
-                       <div>
-                           <label className="block text-xs font-medium mb-1.5 text-gray-700 dark:text-gray-300">زمان خالص تعمیر (دقیقه)</label>
-                           <input 
-                              type="number" 
-                              min="0"
-                              placeholder="0"
-                              required
-                              value={formData.repairTime}
-                              onChange={(e) => setFormData({...formData, repairTime: e.target.value})}
-                              className="w-full p-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none text-center"
-                           />
-                       </div>
-                   </div>
-              </div>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* ... (Priority, Type, Category - Same as before) ... */}
+                  <div>
+                      <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">نوع فعالیت <span className="text-red-500">*</span></label>
+                      <select required disabled={isExecutorMode} value={formData.workType} onChange={(e) => setFormData({...formData, workType: e.target.value})} className={`w-full p-2.5 border rounded-xl outline-none ${isExecutorMode ? 'bg-gray-200 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}>
+                          <option value="REPAIR">تعمیرات اضطراری (EM)</option>
+                          <option value="PM">نت پیشگیرانه (PM)</option>
+                          <option value="PROJECT">پروژه / اصلاح</option>
+                          <option value="INSPECTION">بازرسی فنی</option>
+                          <option value="SERVICE">سرویس عمومی</option>
+                      </select>
+                  </div>
+                  <div>
+                      <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">نوع کار (دیسیپلین) <span className="text-red-500">*</span></label>
+                      <select required disabled={isExecutorMode} value={formData.workCategory} onChange={(e) => setFormData({...formData, workCategory: e.target.value})} className={`w-full p-2.5 border rounded-xl outline-none ${isExecutorMode ? 'bg-gray-200 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}>
+                          <option value="MECHANICAL">مکانیک</option>
+                          <option value="ELECTRICAL">برق</option>
+                          <option value="INSTRUMENTATION">ابزار دقیق</option>
+                          <option value="FACILITIES">تأسیسات صنعتی</option>
+                      </select>
+                  </div>
+                  <div>
+                      <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">اولویت <span className="text-red-500">*</span></label>
+                      <select required disabled={isExecutorMode} value={formData.priority} onChange={(e) => setFormData({...formData, priority: e.target.value})} className={`w-full p-2.5 border rounded-xl outline-none ${isExecutorMode ? 'bg-gray-200 cursor-not-allowed' : 'bg-white dark:bg-gray-700'}`}>
+                          <option value="NORMAL">عادی</option>
+                          <option value="URGENT">فوری</option>
+                          <option value="CRITICAL">بحرانی (توقف تولید)</option>
+                      </select>
+                  </div>
+               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">شرح خرابی <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">شرح خرابی / درخواست <span className="text-red-500">*</span></label>
                 <div className="relative">
                     <textarea 
                         required
-                        className="w-full p-4 border rounded-xl bg-gray-50 dark:bg-gray-700 h-28 pl-10 focus:ring-2 focus:ring-primary outline-none border-gray-200 dark:border-gray-600 resize-none"
+                        readOnly={isExecutorMode}
+                        className={`w-full p-4 border rounded-xl h-28 pl-10 resize-none ${isExecutorMode ? 'bg-gray-100 cursor-not-allowed' : 'bg-gray-50 dark:bg-gray-700'}`}
                         placeholder="توضیحات خرابی را وارد کنید..."
                         value={formData.failureDesc}
                         onChange={(e) => setFormData({...formData, failureDesc: e.target.value})}
                     ></textarea>
-                    <button type="button" className="absolute left-2 bottom-2 p-2 text-gray-400 hover:text-primary transition">
-                        <Mic className="w-5 h-5" />
-                    </button>
+                    {!isExecutorMode && (
+                        <button type="button" onClick={() => handleVoiceInput('failureDesc')} className={`absolute left-2 bottom-2 p-2 transition rounded-full ${listeningField === 'failureDesc' ? 'bg-red-100 text-red-600 animate-pulse' : 'text-gray-400 hover:text-primary'}`}>
+                            {listeningField === 'failureDesc' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
+                        </button>
+                    )}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">اقدام صورت گرفته <span className="text-red-500">*</span></label>
-                <div className="relative">
-                    <textarea 
-                        required
-                        className="w-full p-4 border rounded-xl bg-gray-50 dark:bg-gray-700 h-28 pl-10 focus:ring-2 focus:ring-primary outline-none border-gray-200 dark:border-gray-600 resize-none"
-                        placeholder="شرح کامل تعمیرات..."
-                        value={formData.actionDesc}
-                        onChange={(e) => setFormData({...formData, actionDesc: e.target.value})}
-                    ></textarea>
-                    <button type="button" className="absolute left-2 bottom-2 p-2 text-gray-400 hover:text-primary transition">
-                        <Mic className="w-5 h-5" />
-                    </button>
-                </div>
-              </div>
+              {isExecutorMode && (
+                  <div className="space-y-6 border-t-2 border-dashed border-gray-300 dark:border-gray-600 pt-6 mt-2">
+                       <h3 className="text-lg font-bold text-primary flex items-center gap-2">
+                           <Activity className="w-5 h-5" /> گزارش انجام کار (تکمیل توسط مجری)
+                       </h3>
+                        <div>
+                            <label className="block text-sm font-medium mb-1.5 text-gray-700 dark:text-gray-300">اقدام صورت گرفته <span className="text-red-500">*</span></label>
+                            <div className="relative">
+                                <textarea required className="w-full p-4 border rounded-xl bg-white dark:bg-gray-700 h-28 pl-10 outline-none resize-none" placeholder="شرح کامل تعمیرات انجام شده..." value={formData.actionDesc} onChange={(e) => setFormData({...formData, actionDesc: e.target.value})}></textarea>
+                                <button type="button" onClick={() => handleVoiceInput('actionDesc')} className={`absolute left-2 bottom-2 p-2 transition rounded-full ${listeningField === 'actionDesc' ? 'bg-red-100 text-red-600 animate-pulse' : 'text-gray-400 hover:text-primary'}`}>
+                                    {listeningField === 'actionDesc' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className="w-5 h-5" />}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800 space-y-4">
+                             {/* ... Date/Time Pickers ... */}
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <ShamsiDatePicker label="تاریخ شروع" value={formData.startDate} onChange={(d) => setFormData({...formData, startDate: d})} />
+                                    <ClockTimePicker label="ساعت شروع" value={formData.startTime} onChange={(t) => setFormData({...formData, startTime: t})} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <ShamsiDatePicker label="تاریخ پایان" value={formData.endDate} onChange={(d) => setFormData({...formData, endDate: d})} />
+                                    <ClockTimePicker label="ساعت پایان" value={formData.endTime} onChange={(t) => setFormData({...formData, endTime: t})} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-medium mb-1.5">مدت توقف (دقیقه) <span className="text-red-500">*</span></label>
+                                    <input type="number" required value={formData.downtime} onChange={(e) => setFormData({...formData, downtime: e.target.value})} className="w-full p-2.5 border rounded-xl bg-white dark:bg-gray-700 text-center" />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium mb-1.5">زمان خالص تعمیر (دقیقه) <span className="text-red-500">*</span></label>
+                                    <input type="number" required value={formData.repairTime} onChange={(e) => setFormData({...formData, repairTime: e.target.value})} className="w-full p-2.5 border rounded-xl bg-white dark:bg-gray-700 text-center" />
+                                </div>
+                            </div>
+                        </div>
+                  </div>
+              )}
             </div>
           )}
 
           {activeTab === 'LABOR' && (
               <div className="space-y-4">
-                  {laborRows.map((row, idx) => (
-                      <div key={row.id} className="flex gap-2 items-end bg-gray-50 dark:bg-gray-700 p-3 rounded-lg animate-fadeIn">
-                          <div className="flex-1">
-                              <label className="text-xs text-gray-500 mb-1 block">نام تکنسین</label>
-                              <select 
-                                onChange={(e) => {
-                                    const newRows = [...laborRows];
-                                    newRows[idx].name = e.target.value;
-                                    setLaborRows(newRows);
-                                }}
-                                className="w-full p-2 border rounded dark:bg-gray-800"
-                              >
-                                  <option value="">انتخاب...</option>
-                                  <option value="علی رضایی">علی رضایی (مکانیک)</option>
-                                  <option value="حسن پارسا">حسن پارسا (برق)</option>
-                                  <option value="رضا حسینی">رضا حسینی (جوشکار)</option>
-                              </select>
+                  {laborRows.map((row) => (
+                      <div key={row.id} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-600 space-y-3 animate-fadeIn">
+                          <div className="flex justify-between items-start">
+                             <div className="flex-1 ml-2">
+                                <label className="text-xs text-gray-500 mb-1 block">نام تکنسین <span className="text-red-500">*</span></label>
+                                <select value={row.name} onChange={(e) => updateLaborRow(row.id, 'name', e.target.value)} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800">
+                                    <option value="">انتخاب...</option>
+                                    <option value="علی رضایی">علی رضایی (مکانیک)</option>
+                                    <option value="حسن پارسا">حسن پارسا (برق)</option>
+                                </select>
+                             </div>
+                             <button type="button" onClick={() => handleRemoveRow(setLaborRows, row.id)} className="p-2 text-red-500 hover:bg-red-100 rounded-lg mt-5"><Trash2 className="w-5 h-5" /></button>
                           </div>
-                          <div className="w-24">
-                              <label className="text-xs text-gray-500 mb-1 block">ساعت کار</label>
-                              <input 
-                                type="number" 
-                                defaultValue={row.hours}
-                                onChange={(e) => {
-                                    const newRows = [...laborRows];
-                                    newRows[idx].hours = Number(e.target.value);
-                                    setLaborRows(newRows);
-                                }}
-                                className="w-full p-2 border rounded dark:bg-gray-800" 
-                              />
+                          {/* Date/Time pickers for labor */}
+                          <div className="grid grid-cols-2 gap-3">
+                              <ShamsiDatePicker label="تاریخ شروع" value={row.startDate} onChange={(d) => updateLaborRow(row.id, 'startDate', d)} />
+                              <ClockTimePicker label="ساعت شروع" value={row.startTime} onChange={(t) => updateLaborRow(row.id, 'startTime', t)} />
+                              <ShamsiDatePicker label="تاریخ پایان" value={row.endDate} onChange={(d) => updateLaborRow(row.id, 'endDate', d)} />
+                              <ClockTimePicker label="ساعت پایان" value={row.endTime} onChange={(t) => updateLaborRow(row.id, 'endTime', t)} />
                           </div>
-                          <button 
-                            type="button" 
-                            onClick={() => handleRemoveRow(setLaborRows, row.id)}
-                            className="p-2 text-red-500 hover:bg-red-100 rounded mb-[2px]"
-                          >
-                              <Trash2 className="w-5 h-5" />
-                          </button>
                       </div>
                   ))}
-                  
-                  <button 
-                    type="button" 
-                    onClick={handleAddLabor}
-                    className="w-full flex items-center justify-center gap-2 text-primary border-2 border-dashed border-primary/30 px-4 py-3 rounded-lg hover:bg-primary/5 transition"
-                  >
-                      <Plus className="w-4 h-4" /> افزودن نیروی کار
-                  </button>
+                  <button type="button" onClick={handleAddLabor} className="w-full flex items-center justify-center gap-2 text-primary border-2 border-dashed border-primary/30 px-4 py-3 rounded-lg hover:bg-primary/5 transition"><Plus className="w-4 h-4" /> افزودن نیروی کار</button>
               </div>
           )}
 
            {activeTab === 'PARTS' && (
               <div className="space-y-4">
-                  {partRows.map((row, idx) => (
-                      <div key={row.id} className="flex gap-2 items-end bg-gray-50 dark:bg-gray-700 p-3 rounded-lg animate-fadeIn">
-                          <div className="flex-1">
-                              <label className="text-xs text-gray-500 mb-1 block">نام قطعه</label>
-                              <input 
-                                type="text" 
-                                placeholder="جستجو کد یا نام..." 
-                                onChange={(e) => {
-                                    const newRows = [...partRows];
-                                    newRows[idx].name = e.target.value;
-                                    setPartRows(newRows);
-                                }}
-                                className="w-full p-2 border rounded dark:bg-gray-800" 
-                               />
+                  {partRows.map((row) => (
+                      <div key={row.id} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl space-y-3 animate-fadeIn relative">
+                          <button type="button" onClick={() => handleRemoveRow(setPartRows, row.id)} className="absolute top-4 left-4 p-1.5 text-red-500 hover:bg-red-100 rounded"><Trash2 className="w-4 h-4" /></button>
+                          <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                  <label className="text-xs text-gray-500 mb-1 block">کد قطعه</label>
+                                  <input type="text" value={row.code} onChange={(e) => updatePartRow(row.id, 'code', e.target.value)} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800" placeholder="کد کالا..." />
+                              </div>
+                              <div>
+                                  <label className="text-xs text-gray-500 mb-1 block">نام قطعه <span className="text-red-500">*</span></label>
+                                  <input type="text" value={row.name} onChange={(e) => updatePartRow(row.id, 'name', e.target.value)} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800" placeholder="جستجو..." />
+                              </div>
                           </div>
-                          <div className="w-24">
-                              <label className="text-xs text-gray-500 mb-1 block">تعداد</label>
-                              <input 
-                                type="number" 
-                                defaultValue={row.qty} 
-                                onChange={(e) => {
-                                    const newRows = [...partRows];
-                                    newRows[idx].qty = Number(e.target.value);
-                                    setPartRows(newRows);
-                                }}
-                                className="w-full p-2 border rounded dark:bg-gray-800" 
-                              />
+                          <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                  <label className="text-xs text-gray-500 mb-1 block">تعداد <span className="text-red-500">*</span></label>
+                                  <input type="number" value={row.qty} onChange={(e) => updatePartRow(row.id, 'qty', Number(e.target.value))} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800" />
+                              </div>
+                              <div>
+                                  <label className="text-xs text-gray-500 mb-1 block">واحد <span className="text-red-500">*</span></label>
+                                  <select value={row.unit} onChange={(e) => updatePartRow(row.id, 'unit', e.target.value)} className="w-full p-2 border rounded-lg bg-white dark:bg-gray-800">
+                                      {units.length > 0 ? units.map(u => (
+                                          <option key={u.id} value={u.title}>{u.title}</option>
+                                      )) : <option value="عدد">عدد</option>}
+                                  </select>
+                              </div>
                           </div>
-                           <button 
-                            type="button" 
-                            onClick={() => handleRemoveRow(setPartRows, row.id)}
-                            className="p-2 text-red-500 hover:bg-red-100 rounded mb-[2px]"
-                          >
-                              <Trash2 className="w-5 h-5" />
-                          </button>
                       </div>
                   ))}
-                   <button 
-                    type="button" 
-                    onClick={handleAddPart}
-                    className="w-full flex items-center justify-center gap-2 text-primary border-2 border-dashed border-primary/30 px-4 py-3 rounded-lg hover:bg-primary/5 transition"
-                  >
-                      <Plus className="w-4 h-4" /> افزودن قطعه مصرفی
-                  </button>
+                   <button type="button" onClick={handleAddPart} className="w-full flex items-center justify-center gap-2 text-primary border-2 border-dashed border-primary/30 px-4 py-3 rounded-lg hover:bg-primary/5 transition"><Plus className="w-4 h-4" /> افزودن قطعه مصرفی</button>
               </div>
           )}
 
            {activeTab === 'DOCS' && (
               <div className="space-y-6">
-                   <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer" onClick={handleAddDoc}>
+                   <input type="file" ref={fileInputRef} multiple className="hidden" onChange={handleFileChange} />
+                   <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:bg-gray-50 dark:hover:bg-gray-700 transition cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                       <Paperclip className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                       <p className="text-gray-500 mb-2 font-medium">فایل‌ها را اینجا رها کنید یا کلیک کنید</p>
-                      <span className="text-xs text-gray-400">PDF, JPG, PNG (Max 5MB)</span>
                   </div>
-
                   {docRows.length > 0 && (
                       <div className="space-y-2">
                           <h4 className="text-sm font-bold text-gray-500">فایل‌های پیوست شده:</h4>
                           {docRows.map(doc => (
                               <div key={doc.id} className="flex justify-between items-center bg-white dark:bg-gray-700 border p-3 rounded-lg shadow-sm">
-                                  <div className="flex items-center gap-3">
-                                      <div className="bg-blue-100 text-blue-600 p-2 rounded">
-                                          <Paperclip className="w-4 h-4" />
-                                      </div>
-                                      <span className="text-sm truncate max-w-[200px]">{doc.name}</span>
-                                  </div>
-                                  <button type="button" onClick={() => handleRemoveRow(setDocRows, doc.id)} className="text-red-500 hover:text-red-700">
-                                      <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  <span className="text-sm truncate max-w-[200px]">{doc.name}</span>
+                                  <button type="button" onClick={() => handleRemoveRow(setDocRows, doc.id)} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
                               </div>
                           ))}
                       </div>
@@ -576,12 +607,9 @@ export const WorkOrders: React.FC = () => {
           )}
 
           <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700 flex justify-end">
-              <button 
-                type="submit" 
-                className="bg-primary text-white px-8 py-3 rounded-xl shadow-lg shadow-red-900/20 flex items-center gap-2 hover:bg-red-800 transition transform active:scale-95"
-              >
-                  <Save className="w-5 h-5" />
-                  ثبت نهایی گزارش
+              <button disabled={isSubmitting} type="submit" className="bg-primary text-white px-8 py-3 rounded-xl shadow-lg shadow-red-900/20 flex items-center gap-2 hover:bg-red-800 transition transform active:scale-95 disabled:opacity-70 disabled:cursor-wait">
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin"/> : <Save className="w-5 h-5" />} 
+                  {isExecutorMode ? 'ثبت و پایان دستور کار' : 'ثبت درخواست و ارسال به کارتابل'}
               </button>
           </div>
         </form>

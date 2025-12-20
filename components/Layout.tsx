@@ -53,18 +53,30 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, darkMo
             </button>
           </div>
           
-          <div className="p-4 bg-gray-50 dark:bg-gray-700 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center">
-               {user?.avatar ? <img src={user.avatar} alt="User" className="w-full h-full rounded-full object-cover"/> : <UserIcon />}
+          <div 
+            onClick={() => {
+              navigate('/settings');
+              setSidebarOpen(false);
+            }}
+            className="p-4 bg-gray-50 dark:bg-gray-700 flex items-center gap-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors group relative"
+            title="تنظیمات کاربری"
+          >
+            <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center overflow-hidden border-2 border-transparent group-hover:border-primary transition-all">
+               {user?.avatar ? <img src={user.avatar} alt="User" className="w-full h-full object-cover"/> : <UserIcon />}
             </div>
             <div className="overflow-hidden">
-              <p className="font-medium truncate">{user?.fullName}</p>
+              <p className="font-medium truncate group-hover:text-primary transition-colors">{user?.fullName}</p>
               <p className="text-xs text-gray-500 dark:text-gray-300">{user?.role}</p>
+            </div>
+            {/* Tooltip hint */}
+            <div className="absolute left-2 text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                تنظیمات
             </div>
           </div>
 
           <nav className="flex-1 overflow-y-auto py-4">
             {MENU_ITEMS.map((item) => {
+              if (item.id === 'settings') return null; // Hide settings from list to prevent clutter
               if (item.role && user?.role !== item.role && user?.role !== 'ADMIN') return null;
               const isActive = location.pathname === item.path;
               return (
@@ -119,7 +131,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, darkMo
                 <ChevronRight className="w-6 h-6" />
               </button>
             )}
-            <h1 className="text-lg font-semibold">{MENU_ITEMS.find(m => m.path === location.pathname)?.title || 'CMMS'}</h1>
+            <h1 className="text-lg font-semibold">{MENU_ITEMS.find(m => m.path === location.pathname)?.title || (location.pathname === '/settings' ? 'تنظیمات' : 'CMMS')}</h1>
           </div>
           <div className="flex items-center gap-2">
             {/* Context Actions could go here */}

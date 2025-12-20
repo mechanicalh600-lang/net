@@ -1,31 +1,81 @@
-import React, { useState } from 'react';
+
+import React, { useState, useRef, useEffect } from 'react';
 import { User } from '../types';
 import { generateTrackingCode, getShamsiDate } from '../utils';
-import { Mic, Paperclip, Send } from 'lucide-react';
+import { Mic, Paperclip, Send, Trash2, Lightbulb, X } from 'lucide-react';
+import { SmartTable } from '../components/SmartTable';
+import { startWorkflow, getItemsByModule } from '../workflowStore';
 
 export const Suggestions: React.FC<{ user: User }> = ({ user }) => {
+  const [view, setView] = useState<'LIST' | 'NEW'>('LIST');
+  const [items, setItems] = useState<any[]>([]);
+
+  useEffect(() => {
+      const stored = getItemsByModule('SUGGESTION');
+      setItems(stored.map(i => ({...i, ...i.data})));
+  }, [view]);
+
   const [suggestion, setSuggestion] = useState('');
-  const [trackingCode, setTrackingCode] = useState<string | null>(null);
+  
+  // File Upload State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!suggestion.trim()) return;
-    setTrackingCode(generateTrackingCode('H'));
+    const trackingCode = generateTrackingCode('H');
+    startWorkflow('SUGGESTION', { text: suggestion }, user, trackingCode, `پیشنهاد: ${suggestion.substring(0, 20)}...`);
+    alert('پیشنهاد شما ثبت شد.');
+    setView('LIST');
+    setSuggestion('');
+    setAttachedFiles([]);
   };
+
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setAttachedFiles([...attachedFiles, ...Array.from(e.target.files)]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+      setAttachedFiles(attachedFiles.filter((_, i) => i !== index));
+  };
+
+  if (view === 'LIST') {
+      return (
+          <div className="max-w-7xl mx-auto pb-20">
+              <SmartTable
+                title="نظام پیشنهادات"
+                icon={Lightbulb}
+                data={items}
+                onAdd={() => setView('NEW')}
+                columns={[
+                    { header: 'کد پیگیری', accessor: (i: any) => i.trackingCode },
+                    { header: 'خلاصه پیشنهاد', accessor: (i: any) => i.title },
+                    { header: 'تاریخ ثبت', accessor: (i: any) => i.createdAt },
+                    { header: 'پیشنهاد دهنده', accessor: (i: any) => i.description.split('توسط')[1] || user.fullName },
+                    { header: 'وضعیت', accessor: (i: any) => <span className="bg-yellow-100 text-yellow-800 px-2 rounded-full text-xs font-bold">{i.status === 'PENDING' ? 'در حال بررسی' : 'پاسخ داده شده'}</span> },
+                ]}
+              />
+          </div>
+      );
+  }
 
   return (
     <div className="max-w-2xl mx-auto pb-20">
-      <h1 className="text-2xl font-bold mb-6">ثبت پیشنهادات فنی</h1>
+      <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="w-8 h-8 text-primary" />
+            <h1 className="text-2xl font-bold">ثبت پیشنهادات فنی</h1>
+          </div>
+          <button onClick={() => setView('LIST')} className="p-2 hover:bg-gray-100 rounded-full"><X className="w-5 h-5"/></button>
+      </div>
 
-      {trackingCode ? (
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg text-center space-y-4 animate-fadeIn">
-           <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto text-green-600 text-3xl">✓</div>
-           <h2 className="text-xl font-bold text-green-600">پیشنهاد شما با موفقیت ثبت شد</h2>
-           <p className="text-gray-500">کد پیگیری شما:</p>
-           <div className="text-3xl font-mono font-bold tracking-wider">{trackingCode}</div>
-           <button onClick={() => { setTrackingCode(null); setSuggestion(''); }} className="text-primary underline mt-4">ثبت پیشنهاد جدید</button>
-        </div>
-      ) : (
         <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -39,7 +89,7 @@ export const Suggestions: React.FC<{ user: User }> = ({ user }) => {
           </div>
 
           <div>
-             <label className="block text-sm font-medium mb-1">شرح پیشنهاد فنی</label>
+             <label className="block text-sm font-medium mb-1">شرح پیشنهاد فنی <span className="text-red-500">*</span></label>
              <div className="relative">
                <textarea 
                   value={suggestion}
@@ -54,18 +104,36 @@ export const Suggestions: React.FC<{ user: User }> = ({ user }) => {
              </div>
           </div>
 
-          <div className="flex items-center gap-4">
-             <button type="button" className="flex items-center gap-2 text-gray-500 hover:text-gray-700 border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-lg">
-                <Paperclip className="w-4 h-4" /> افزودن مستندات
-             </button>
-             <span className="text-xs text-gray-400">فایل‌های مجاز: PDF, JPG (max 5MB)</span>
+          <div>
+             <input type="file" ref={fileInputRef} multiple className="hidden" onChange={handleFileChange} />
+             <div className="flex items-center gap-4">
+                <button type="button" onClick={handleFileClick} className="flex items-center gap-2 text-gray-500 hover:text-gray-700 border border-gray-300 dark:border-gray-600 px-4 py-2 rounded-lg transition hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <Paperclip className="w-4 h-4" /> افزودن مستندات
+                </button>
+                <span className="text-xs text-gray-400">فایل‌های مجاز: PDF, JPG (max 5MB)</span>
+             </div>
+
+             {attachedFiles.length > 0 && (
+                 <div className="mt-4 space-y-2">
+                     {attachedFiles.map((file, idx) => (
+                         <div key={idx} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg text-sm border border-gray-100 dark:border-gray-600">
+                             <span className="truncate max-w-[200px]">{file.name}</span>
+                             <button type="button" onClick={() => removeFile(idx)} className="text-red-500 hover:bg-red-50 p-1 rounded">
+                                 <Trash2 className="w-4 h-4" />
+                             </button>
+                         </div>
+                     ))}
+                 </div>
+             )}
           </div>
 
-          <button type="submit" className="w-full bg-primary text-white py-3 rounded-xl shadow-lg hover:bg-red-800 transition flex items-center justify-center gap-2">
-             <Send className="w-5 h-5" /> ثبت پیشنهاد
-          </button>
+          <div className="flex gap-3 pt-4">
+            <button type="button" onClick={() => setView('LIST')} className="flex-1 border py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700">انصراف</button>
+            <button type="submit" className="flex-[2] bg-primary text-white py-3 rounded-xl shadow-lg hover:bg-red-800 transition flex items-center justify-center gap-2">
+                <Send className="w-5 h-5" /> ثبت پیشنهاد
+            </button>
+          </div>
         </form>
-      )}
     </div>
   );
 };
