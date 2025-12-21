@@ -79,7 +79,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <Logo className="w-full h-full drop-shadow-2xl" />
              </div>
              
-             <h1 className="text-lg font-black text-[#800020] dark:text-red-400 leading-tight mb-2 px-4">
+             <h1 className="text-xl font-black text-[#800020] dark:text-red-400 leading-tight mb-2 px-4">
                 شرکت توسعه معدنی و صنعتی صبانور
              </h1>
              <p className="text-sm text-gray-500 dark:text-gray-400 font-medium tracking-wide">

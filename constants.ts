@@ -1,13 +1,15 @@
 
-import { BarChart3, Wrench, Package, ClipboardCheck, Archive, Users, Settings, ShoppingCart, Lightbulb, FileSignature, Inbox, Briefcase, Award, GitMerge, ListChecks, MessageSquare } from 'lucide-react';
+import { BarChart3, Wrench, Package, ClipboardCheck, Archive, Users, Settings, ShoppingCart, Lightbulb, FileSignature, Inbox, Briefcase, Award, GitMerge, ListChecks, MessageSquare, PieChart, Clipboard } from 'lucide-react';
 
-export const APP_VERSION = "2.2.0";
+export const APP_VERSION = "2.4.0";
 
 export const MENU_ITEMS = [
   { id: 'dashboard', title: 'داشبورد', icon: BarChart3, path: '/' },
+  { id: 'shiftreport', title: 'گزارش شیفت', icon: Clipboard, path: '/shift-report' }, // Added
+  { id: 'reports', title: 'گزارش‌ساز', icon: PieChart, path: '/reports' },
   { id: 'inbox', title: 'کارتابل من', icon: Inbox, path: '/inbox' },
-  { id: 'messages', title: 'پیام‌ها', icon: MessageSquare, path: '/messages' }, // Added
-  { id: 'workorders', title: 'دستور کارها', icon: Wrench, path: '/work-orders' }, // Renamed and points to List
+  { id: 'messages', title: 'پیام‌ها', icon: MessageSquare, path: '/messages' },
+  { id: 'workorders', title: 'دستور کارها', icon: Wrench, path: '/work-orders' },
   { id: 'projects', title: 'پروژه‌ها', icon: Briefcase, path: '/projects' },
   { id: 'performance', title: 'امتیاز عملکرد', icon: Award, path: '/performance' },
   { id: 'partrequest', title: 'درخواست قطعه', icon: Package, path: '/part-requests' },

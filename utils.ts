@@ -1,3 +1,4 @@
+
 // Simple mock for ID generation
 export const generateId = (): string => Math.random().toString(36).substring(2, 9);
 
@@ -65,11 +66,18 @@ export const getTime = (): string => {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
 
-export const generateTrackingCode = (type: 'W' | 'P' | 'J' | 'G' | 'H' | 'K'): string => {
+export const generateTrackingCode = (type: 'W' | 'P' | 'J' | 'G' | 'H' | 'K' | 'T'): string => {
   const date = new Date();
   const j = gregorianToJalali(date.getFullYear(), date.getMonth() + 1, date.getDate());
   const year = String(j.jy).substring(2); 
   const month = String(j.jm).padStart(2, '0');
+  
+  if (type === 'T') {
+      // 5 digits counter for Shift Reports
+      const randomCounter = Math.floor(Math.random() * 90000 + 10000).toString();
+      return `${type}${year}${month}${randomCounter}`;
+  }
+
   const randomCounter = Math.floor(Math.random() * 9999).toString().padStart(4, '0');
   return `${type}${year}${month}${randomCounter}`;
 };

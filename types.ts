@@ -27,6 +27,17 @@ export interface LogEntry {
   ip: string;
 }
 
+export interface SystemLog {
+  id: string;
+  userName: string;
+  personnelCode: string;
+  action: string;
+  date: string;
+  time: string;
+  ip: string;
+  details?: string;
+}
+
 // --- Workflow Types ---
 export interface WorkflowAction {
   id: string;

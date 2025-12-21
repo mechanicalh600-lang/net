@@ -17,11 +17,14 @@ import { Settings } from './pages/Settings';
 import { Projects } from './pages/Projects';
 import { Performance } from './pages/Performance';
 import { Inbox } from './pages/Inbox';
-import { Messages } from './pages/Messages'; // Added
+import { Messages } from './pages/Messages';
 import { WorkflowDesigner } from './pages/WorkflowDesigner';
+import { Reports } from './pages/Reports';
+import { ShiftHandover } from './pages/ShiftHandover'; // Import
 import { SnowEffect } from './components/SnowEffect';
-import { User, UserRole } from './types';
-import { mockIp, getShamsiDate, getTime } from './utils';
+import { ChatAssistant } from './components/ChatAssistant'; 
+import { User, UserRole, SystemLog } from './types';
+import { mockIp, getShamsiDate, getTime, generateId } from './utils';
 
 const App: React.FC = () => {
   // Global State
@@ -62,12 +65,42 @@ const App: React.FC = () => {
   const handleLogin = (newUser: User) => {
     setUser(newUser);
     localStorage.setItem('currentUser', JSON.stringify(newUser));
-    console.log(`LOG: LOGIN user=${newUser.username} ip=${mockIp} date=${getShamsiDate()} time=${getTime()}`);
+    
+    // --- System Log Recording ---
+    const newLog: SystemLog = {
+        id: generateId(),
+        userName: newUser.fullName,
+        personnelCode: newUser.personnelCode || (newUser.username === 'admin' ? '9999' : '0000'),
+        action: 'ورود به سیستم',
+        date: getShamsiDate(),
+        time: getTime(),
+        ip: mockIp,
+        details: `Role: ${newUser.role}`
+    };
+    
+    // In a real app, this would be an API call. Here we use localStorage for persistence.
+    const existingLogs = JSON.parse(localStorage.getItem('system_logs') || '[]');
+    existingLogs.push(newLog);
+    localStorage.setItem('system_logs', JSON.stringify(existingLogs));
+    
+    console.log(`LOG: LOGIN user=${newUser.username}`);
   };
 
   const handleLogout = () => {
     if (user) {
-        console.log(`LOG: LOGOUT user=${user.username} ip=${mockIp} date=${getShamsiDate()} time=${getTime()}`);
+        // Record Logout
+        const newLog: SystemLog = {
+            id: generateId(),
+            userName: user.fullName,
+            personnelCode: user.personnelCode || '---',
+            action: 'خروج از سیستم',
+            date: getShamsiDate(),
+            time: getTime(),
+            ip: mockIp
+        };
+        const existingLogs = JSON.parse(localStorage.getItem('system_logs') || '[]');
+        existingLogs.push(newLog);
+        localStorage.setItem('system_logs', JSON.stringify(existingLogs));
     }
     setUser(null);
     localStorage.removeItem('currentUser');
@@ -81,6 +114,7 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       <SnowEffect enabled={snowMode} />
+      {user && <ChatAssistant user={user} />}
       <Layout 
         user={user} 
         onLogout={handleLogout}
@@ -93,8 +127,9 @@ const App: React.FC = () => {
           <Route path="/" element={user ? <Dashboard /> : <Navigate to="/login" />} />
           <Route path="/inbox" element={user ? <Inbox user={user} /> : <Navigate to="/login" />} />
           <Route path="/messages" element={user ? <Messages user={user} /> : <Navigate to="/login" />} />
+          <Route path="/reports" element={user ? <Reports /> : <Navigate to="/login" />} />
+          <Route path="/shift-report" element={user ? <ShiftHandover user={user} /> : <Navigate to="/login" />} /> {/* New Route */}
           
-          {/* Updated Work Order Routes */}
           <Route path="/work-orders" element={user ? <WorkOrderList /> : <Navigate to="/login" />} />
           <Route path="/work-orders/new" element={user ? <WorkOrders /> : <Navigate to="/login" />} />
           

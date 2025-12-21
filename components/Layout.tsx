@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X, ChevronRight, LogOut, User as UserIcon, Moon, Sun } from 'lucide-react';
@@ -47,7 +48,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, darkMo
       `}>
         <div className="flex flex-col h-full">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-primary dark:text-red-400">CMMS صبانور</h2>
+            <h2 className="text-xl font-bold text-primary dark:text-red-400">دستیار</h2>
             <button onClick={() => setSidebarOpen(false)} className="md:hidden">
               <X className="w-6 h-6" />
             </button>
@@ -131,7 +132,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, darkMo
                 <ChevronRight className="w-6 h-6" />
               </button>
             )}
-            <h1 className="text-lg font-semibold">{MENU_ITEMS.find(m => m.path === location.pathname)?.title || (location.pathname === '/settings' ? 'تنظیمات' : 'CMMS')}</h1>
+            <h1 className="text-lg font-semibold">{MENU_ITEMS.find(m => m.path === location.pathname)?.title || (location.pathname === '/settings' ? 'تنظیمات' : 'دستیار')}</h1>
           </div>
           <div className="flex items-center gap-2">
             {/* Context Actions could go here */}

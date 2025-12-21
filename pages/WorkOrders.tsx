@@ -67,6 +67,7 @@ export const WorkOrders: React.FC<WorkOrdersProps> = ({ initialData, onProcessCo
       requester: user.fullName || 'کاربر ناشناس',
       reportDate: getShamsiDate(),
       reportTime: getTime(),
+      shift: 'DayWork', // Added Shift Field
       workCategory: 'MECHANICAL',
       workType: 'REPAIR',
       priority: 'NORMAL',
@@ -260,6 +261,10 @@ export const WorkOrders: React.FC<WorkOrdersProps> = ({ initialData, onProcessCo
         return;
     }
 
+    if (!window.confirm(isExecutorMode ? "آیا از پایان کار و ثبت نهایی اطمینان دارید؟" : "آیا از ثبت درخواست و ارسال به کارتابل اطمینان دارید؟")) {
+        return;
+    }
+
     const fullData = { ...formData, labor: laborRows, parts: partRows, docs: docRows };
     
     if (isExecutorMode && onProcessComplete) {
@@ -279,9 +284,14 @@ export const WorkOrders: React.FC<WorkOrdersProps> = ({ initialData, onProcessCo
                 uniqueCode, 
                 `درخواست کار: ${formData.equipName || formData.equipLocalName} - ${formData.failureDesc.substring(0, 30)}...`
             );
-            if (cartableItem) setWorkflowStarted(true);
-            setTrackingCode(uniqueCode);
+            if (cartableItem) {
+                setWorkflowStarted(true);
+                setTrackingCode(uniqueCode);
+            } else {
+                setErrorMsg("خطا در ایجاد فرآیند. لطفا دوباره تلاش کنید.");
+            }
         } catch (err) {
+            console.error(err);
             setErrorMsg("خطا در ارتباط با سرور جهت دریافت کد رهگیری.");
         } finally {
             setIsSubmitting(false);
@@ -340,7 +350,7 @@ export const WorkOrders: React.FC<WorkOrdersProps> = ({ initialData, onProcessCo
 
           {activeTab === 'GENERAL' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-600">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-xl border border-gray-100 dark:border-gray-600">
                   <div className="flex flex-col">
                       <span className="text-xs text-gray-500 mb-1">درخواست کننده</span>
                       <span className="font-bold text-sm">{formData.requester}</span>
@@ -352,6 +362,20 @@ export const WorkOrders: React.FC<WorkOrdersProps> = ({ initialData, onProcessCo
                   <div className="flex flex-col">
                       <span className="text-xs text-gray-500 mb-1">ساعت گزارش</span>
                       <span className="font-bold text-sm font-mono">{formData.reportTime}</span>
+                  </div>
+                  <div className="flex flex-col">
+                      <label className="text-xs text-gray-500 mb-1">شیفت کاری</label>
+                      <select 
+                        value={formData.shift}
+                        onChange={(e) => setFormData({...formData, shift: e.target.value})}
+                        disabled={isExecutorMode}
+                        className={`text-sm font-bold border-none bg-transparent outline-none ${isExecutorMode ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                      >
+                          <option value="DayWork">روزکار</option>
+                          <option value="A">شیفت A</option>
+                          <option value="B">شیفت B</option>
+                          <option value="C">شیفت C</option>
+                      </select>
                   </div>
               </div>
 
@@ -598,7 +622,7 @@ export const WorkOrders: React.FC<WorkOrdersProps> = ({ initialData, onProcessCo
                           {docRows.map(doc => (
                               <div key={doc.id} className="flex justify-between items-center bg-white dark:bg-gray-700 border p-3 rounded-lg shadow-sm">
                                   <span className="text-sm truncate max-w-[200px]">{doc.name}</span>
-                                  <button type="button" onClick={() => handleRemoveRow(setDocRows, doc.id)} className="text-red-500"><Trash2 className="w-4 h-4" /></button>
+                                  <button type="button" onClick={() => handleRemoveRow(setDocRows, doc.id)} className="text-red-500"><Trash2 className="w-4 h-4"/></button>
                               </div>
                           ))}
                       </div>
